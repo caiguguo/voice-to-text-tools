@@ -87,10 +87,10 @@ function setProgress(v){v=Math.max(0,Math.min(100,Math.round(v)));pct.textConten
 function tipSet(s,c){tip.textContent=s||"";tip.className="hint "+(c||"")}
 function diagAdd(s){diagnostics.push(new Date().toLocaleTimeString()+"  "+s);diag.textContent=diagnostics.join("\n")}
 function bytes(n){return n<1048576?(n/1024).toFixed(1)+" KB":(n/1048576).toFixed(2)+" MB"}
-function duration(file){return new Promise((res,rej)=>{const u=URL.createObjectURL(file),m=document.createElement(/^video\\//.test(file.type)?"video":"audio");m.preload="metadata";m.onloadedmetadata=()=>{URL.revokeObjectURL(u);isFinite(m.duration)&&m.duration>0?res(m.duration):rej(Error("无法读取媒体时长"))};m.onerror=()=>{URL.revokeObjectURL(u);rej(Error("读取媒体元数据失败"))};m.src=u})}
+function duration(file){return new Promise((res,rej)=>{const u=URL.createObjectURL(file),m=document.createElement(/^video\//.test(file.type)?"video":"audio");m.preload="metadata";m.onloadedmetadata=()=>{URL.revokeObjectURL(u);isFinite(m.duration)&&m.duration>0?res(m.duration):rej(Error("无法读取媒体时长"))};m.onerror=()=>{URL.revokeObjectURL(u);rej(Error("读取媒体元数据失败"))};m.src=u})}
 async function usageEst(f){try{const d=await duration(f);usage.textContent=`预计用量：约 ${Math.ceil(d/BILL)} 次（时长 ${Math.floor(d)} 秒，分段 ${Math.ceil(d/SEG)} 段）`}catch{usage.textContent="预计用量：将在识别时自动分段"}}
 
-function pick(f){if(!f)return;if(!/^audio\\//.test(f.type)&&!/^video\\//.test(f.type)&&!/\\.(mp3|wav|m4a|aac|flac|ogg|mp4|mov|m4v|webm|mkv|avi)$/i.test(f.name)){tipSet("不支持的文件格式","warn");return}file=f;meta.textContent=`已选择：${f.name}（${bytes(f.size)}）`;usageEst(f);start.disabled=false;retry.disabled=false;setStatus("文件已就绪，等待识别");tipSet("")}
+function pick(f){if(!f)return;if(!/^audio\//.test(f.type)&&!/^video\//.test(f.type)&&!/\.(mp3|wav|m4a|aac|flac|ogg|mp4|mov|m4v|webm|mkv|avi)$/i.test(f.name)){tipSet("不支持的文件格式","warn");return}file=f;meta.textContent=`已选择：${f.name}（${bytes(f.size)}）`;usageEst(f);start.disabled=false;retry.disabled=false;setStatus("文件已就绪，等待识别");tipSet("")}
 drop.onclick=()=>fileInput.click();fileInput.onchange=()=>pick(fileInput.files[0]);
 ["dragenter","dragover"].forEach(e=>drop.addEventListener(e,x=>{x.preventDefault();drop.style.borderColor="#2ee6c9"}));
 ["dragleave","drop"].forEach(e=>drop.addEventListener(e,x=>{x.preventDefault();drop.style.borderColor=""}));
@@ -187,4 +187,4 @@ download.onclick=()=>{if(!result.value)return;const ext=format.value==="doc"?"do
 })();
 </script>
 </body>
- </html>
+</html>
