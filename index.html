@@ -1,183 +1,6 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>音视频转文字（诊断修正版）</title>
-<style>
-:root{--bg:#061226;--card:rgba(13,25,48,.78);--line:rgba(145,184,241,.24);--text:#e9f2ff;--muted:#9ab3d9;--a:#2ee6c9;--b:#3e8cff;--warn:#ff8a5c;--ok:#30d390}
-*{box-sizing:border-box}body{margin:0;min-height:100vh;color:var(--text);font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:linear-gradient(145deg,#040a18,#0a1a33 45%,#08233a);padding:18px 0}
-.wrap{width:min(1080px,calc(100% - 30px));margin:auto}.title{font-size:clamp(25px,5vw,38px);margin:10px 0 18px;background:linear-gradient(110deg,#dcf4ff,#92d1ff,#5deed6);-webkit-background-clip:text;color:transparent}
-.card{border:1px solid var(--line);border-radius:16px;background:var(--card);padding:16px;margin:14px 0;box-shadow:0 14px 38px rgba(0,6,18,.35)}
-h2{font-size:16px;margin:0 0 12px}.grid{display:grid;gap:14px}
-.cfg{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.cfg.collapsed{display:none}
-label{display:block;color:var(--muted);font-size:13px;margin:0 0 6px}input[type=text]{width:100%;padding:10px;border-radius:10px;border:1px solid var(--line);background:#071120;color:var(--text);outline:0}
-.btn{border:0;border-radius:12px;padding:10px 14px;font-weight:700;cursor:pointer;background:linear-gradient(115deg,var(--a),var(--b));color:#061021}.ghost{color:var(--text);background:rgba(129,169,231,.16);border:1px solid var(--line)}button:disabled{opacity:.5;cursor:not-allowed}
-.drop{border:1px dashed rgba(140,186,248,.42);border-radius:16px;padding:28px 14px;text-align:center;background:rgba(8,15,29,.55);cursor:pointer}.drop p{margin:7px;color:var(--muted)}
-.ops{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}.row{display:flex;justify-content:space-between;color:var(--muted);font-size:13px;margin-bottom:10px}
-.progress{height:10px;border-radius:99px;background:rgba(91,120,171,.22);overflow:hidden}.progress span{display:block;height:100%;width:0;background:linear-gradient(90deg,#4ccff7,#33f2cc);transition:width .12s}
-textarea{width:100%;min-height:180px;resize:none;border-radius:12px;border:1px solid var(--line);background:#071120;color:var(--text);padding:10px;font-size:16px;line-height:1.7}
-.hint{color:var(--muted);font-size:12px;line-height:1.6}.warn{color:var(--warn)}.ok{color:var(--ok)}
-details{margin-top:10px}summary{cursor:pointer;color:#9fd8ff}.diag{white-space:pre-wrap;word-break:break-word;background:#040b17;border:1px solid var(--line);border-radius:10px;padding:10px;color:#bcd0ed;font:12px/1.55 monospace;max-height:300px;overflow:auto}
-@media(max-width:700px){.cfg{grid-template-columns:1fr}}
-</style>
-</head>
-<body>
-<main class="wrap">
-<h1 class="title">音视频转文字（自动分段识别）</h1>
-
-<section class="card">
-<div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-<h2>讯飞 API 配置（本地保存）</h2><button id="toggle" class="btn ghost">折叠</button>
-</div>
-<div id="cfg" class="cfg">
-<div><label>APPID</label><input id="appid" type="text" placeholder="请输入 APPID"></div>
-<div><label>API Key</label><input id="key" type="text" placeholder="请输入 API Key"></div>
-<div><label>API Secret</label><input id="secret" type="text" placeholder="请输入 API Secret"></div>
-</div>
-<p class="hint">配置只保存在当前浏览器 localStorage。不会上传到 Cloudflare。此版本增加了 WebSocket 实际错误诊断，并按讯飞建议以 1280 字节/40ms 发送 PCM。</p>
-</section>
-
-<section class="card">
-<h2>音频上传</h2>
-<div id="drop" class="drop">
-<p>点击选择或拖拽音频/视频文件</p>
-<p>支持 MP3/WAV/M4A/AAC/FLAC/OGG、MP4/MOV/M4V/WEBM/MKV/AVI</p>
-<p id="meta">尚未选择文件</p><p id="usage" class="hint">预计用量：-</p>
-</div>
-<input id="file" type="file" accept="audio/*,video/*" hidden>
-<div class="ops"><button id="start" class="btn" disabled>开始识别</button><button id="clear" class="btn ghost">清空结果</button></div>
-</section>
-
-<section class="card">
-<h2>识别进度</h2><div class="row"><span id="status">等待上传音频</span><span id="pct">0%</span></div>
-<div class="progress"><span id="bar"></span></div>
-</section>
-
-<section class="card">
-<h2>识别结果</h2><textarea id="result" placeholder="完整识别文本" readonly></textarea>
-<div class="ops">
-<button id="copy" class="btn" disabled>一键复制</button>
-<select id="format" class="btn ghost" disabled><option value="txt">TXT 文本</option><option value="doc">Word 文档</option></select>
-<button id="download" class="btn ghost" disabled>导出文件</button>
-<button id="retry" class="btn ghost" disabled>重新识别</button>
-</div>
-<p id="tip" class="hint"></p>
-<details id="diagBox"><summary>诊断信息（识别失败时展开）</summary><div id="diag" class="diag">暂无诊断信息</div></details>
-</section>
-</main>
-
-<script>
-(()=> {
-const $=id=>document.getElementById(id);
-const appid=$("appid"),key=$("key"),secret=$("secret"),cfg=$("cfg"),toggle=$("toggle");
-const drop=$("drop"),fileInput=$("file"),meta=$("meta"),usage=$("usage"),start=$("start"),retry=$("retry");
-const clear=$("clear"),status=$("status"),pct=$("pct"),bar=$("bar"),result=$("result"),tip=$("tip"),diag=$("diag");
-const copy=$("copy"),download=$("download"),format=$("format");
-let file=null,pcm=null,running=false,text="",diagnostics=[];
-const SEG=59,BILL=60;
-
-function save(){localStorage.setItem("xf_appid",appid.value.trim());localStorage.setItem("xf_apikey",key.value.trim());localStorage.setItem("xf_apisecret",secret.value.trim())}
-function load(){appid.value=localStorage.getItem("xf_appid")||"";key.value=localStorage.getItem("xf_apikey")||"";secret.value=localStorage.getItem("xf_apisecret")||""}
-[appid,key,secret].forEach(x=>x.addEventListener("input",save));load();
-toggle.onclick=()=>{cfg.classList.toggle("collapsed");toggle.textContent=cfg.classList.contains("collapsed")?"展开":"折叠"};
-
-function setStatus(s){status.textContent=s}
-function setProgress(v){v=Math.max(0,Math.min(100,Math.round(v)));pct.textContent=v+"%";bar.style.width=v+"%"}
-function tipSet(s,c){tip.textContent=s||"";tip.className="hint "+(c||"")}
-function diagAdd(s){diagnostics.push(new Date().toLocaleTimeString()+"  "+s);diag.textContent=diagnostics.join("\n")}
-function bytes(n){return n<1048576?(n/1024).toFixed(1)+" KB":(n/1048576).toFixed(2)+" MB"}
-function duration(file){return new Promise((res,rej)=>{const u=URL.createObjectURL(file),m=document.createElement(/^video\//.test(file.type)?"video":"audio");m.preload="metadata";m.onloadedmetadata=()=>{URL.revokeObjectURL(u);isFinite(m.duration)&&m.duration>0?res(m.duration):rej(Error("无法读取媒体时长"))};m.onerror=()=>{URL.revokeObjectURL(u);rej(Error("读取媒体元数据失败"))};m.src=u})}
-async function usageEst(f){try{const d=await duration(f);usage.textContent=`预计用量：约 ${Math.ceil(d/BILL)} 次（时长 ${Math.floor(d)} 秒，分段 ${Math.ceil(d/SEG)} 段）`}catch{usage.textContent="预计用量：将在识别时自动分段"}}
-
-function pick(f){if(!f)return;if(!/^audio\//.test(f.type)&&!/^video\//.test(f.type)&&!/\.(mp3|wav|m4a|aac|flac|ogg|mp4|mov|m4v|webm|mkv|avi)$/i.test(f.name)){tipSet("不支持的文件格式","warn");return}file=f;meta.textContent=`已选择：${f.name}（${bytes(f.size)}）`;usageEst(f);start.disabled=false;retry.disabled=false;setStatus("文件已就绪，等待识别");tipSet("")}
-drop.onclick=()=>fileInput.click();fileInput.onchange=()=>pick(fileInput.files[0]);
-["dragenter","dragover"].forEach(e=>drop.addEventListener(e,x=>{x.preventDefault();drop.style.borderColor="#2ee6c9"}));
-["dragleave","drop"].forEach(e=>drop.addEventListener(e,x=>{x.preventDefault();drop.style.borderColor=""}));
-drop.ondrop=e=>pick(e.dataTransfer.files[0]);
-
-async function pcm16(f){
- const raw=await f.arrayBuffer(),AC=window.AudioContext||window.webkitAudioContext;if(!AC)throw Error("浏览器不支持 AudioContext");
- const ctx=new AC();let b;try{b=await ctx.decodeAudioData(raw.slice(0))}catch{throw Error("媒体解码失败，请尝试 MP3/WAV/MP4(H264+Aac)")};
- const mono=new Float32Array(b.length);
- for(let c=0;c<b.numberOfChannels;c++){const d=b.getChannelData(c);for(let i=0;i<d.length;i++)mono[i]+=d[i]/b.numberOfChannels}
- const rate=16000,len=Math.ceil(mono.length*rate/b.sampleRate),off=new OfflineAudioContext(1,len,rate),tmp=off.createBuffer(1,mono.length,b.sampleRate);
- tmp.copyToChannel(mono,0);const src=off.createBufferSource();src.buffer=tmp;src.connect(off.destination);src.start(0);const r=await off.startRendering(),a=r.getChannelData(0),out=new Int16Array(a.length);
- for(let i=0;i<a.length;i++){const s=Math.max(-1,Math.min(1,a[i]));out[i]=s<0?s*32768:s*32767}ctx.close();return new Uint8Array(out.buffer)
-}
-function b64(a){let s="";for(let i=0;i<a.length;i+=32768)s+=String.fromCharCode(...a.subarray(i,i+32768));return btoa(s)}
-function split(a){const n=16000*2*SEG,list=[];for(let i=0;i<a.length;i+=n)list.push(a.subarray(i,Math.min(i+n,a.length)));return list}
-async function hmac(secret,text){const k=await crypto.subtle.importKey("raw",new TextEncoder().encode(secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);const s=await crypto.subtle.sign("HMAC",k,new TextEncoder().encode(text));let x="";new Uint8Array(s).forEach(c=>x+=String.fromCharCode(c));return btoa(x)}
-async function wsUrl(host,apiKey,apiSecret){
- const path="/v2/iat",date=new Date().toUTCString();
- const sig=await hmac(apiSecret,`host: ${host}\ndate: ${date}\nGET ${path} HTTP/1.1`);
- const origin=`api_key="${apiKey}", algorithm="hmac-sha256", headers="host date request-line", signature="${sig}"`;
- let auth="";for(const c of new TextEncoder().encode(origin))auth+=String.fromCharCode(c);
- return `wss://${host}${path}?authorization=${encodeURIComponent(btoa(auth))}&date=${encodeURIComponent(date)}&host=${host}`;
-}
-function merge(map){return [...map.entries()].sort((a,b)=>a[0]-b[0]).map(x=>x[1]).join("")}
-
-async function segment(part,segNo){
- const hosts=["iat-api.xfyun.cn","ws-api.xfyun.cn"];
- let lastErr=null;
- for(const host of hosts){
-   diagAdd(`尝试 WebSocket：${host}（第 ${segNo} 段）`);
-   try{
-    const url=await wsUrl(host,key.value.trim(),secret.value.trim());
-    const t0=Date.now();
-    const out=await new Promise((resolve,reject)=>{
-      const ws=new WebSocket(url),map=new Map();let done=false,timer=null,opened=false,gotMsg=false;
-      const finish=(ok,v)=>{if(done)return;done=true;if(timer)clearTimeout(timer);try{ws.close(1000)}catch{};ok?resolve(v):reject(v)};
-      timer=setTimeout(()=>{finish(false,Error(`WebSocket 连接超时（${host}，10秒内未完成握手）`))},10000);
-      ws.onopen=()=>{
-       if(timer) clearTimeout(timer);
-       opened=true;diagAdd(`${host} 握手成功，开始发送音频`);
-       let off=0,first=true;
-       const send=()=>{
-        if(ws.readyState!==1)return;
-        const end=Math.min(off+1280,part.length),chunk=part.subarray(off,end),last=end>=part.length;
-        const p={common:first?{app_id:appid.value.trim()}:undefined,business:first?{language:"zh_cn",domain:"iat",accent:"mandarin",dwa:"wpgs"}:undefined,data:{status:first?(last?2:0):(last?2:1),format:"audio/L16;rate=16000",encoding:"raw",audio:b64(chunk)}};
-        ws.send(JSON.stringify(p));first=false;off=end;
-        if(last){clearInterval(timerSend);diagAdd(`${host} 音频发送完成，共 ${part.length} 字节`)}
-        if(off<part.length){} 
-       };
-       const timerSend=setInterval(send,40);send();
-      };
-      ws.onmessage=e=>{
-       gotMsg=true;let m;
-       try{m=JSON.parse(e.data)}catch{finish(false,Error("讯飞返回了无法解析的 JSON"));return}
-       if(m.code!==0){diagAdd(`${host} 讯飞返回错误 code=${m.code}, message=${m.message||""}`);finish(false,Error(`讯飞接口错误：${m.message||"未知错误"}（${m.code}）`));return}
-       if(m.data?.result){const r=m.data.result,sn=Number(r.sn||0),tx=(r.ws||[]).map(x=>(x.cw||[]).map(y=>y.w||"").join("")).join("");
-        if(r.pgs==="rpl"&&Array.isArray(r.rg)){for(const k of map.keys())if(k>=Number(r.rg[0])&&k<=Number(r.rg[1]))map.delete(k)}
-        map.set(sn,tx);result.value=text+merge(map)
-       }
-       if(m.data?.status===2)finish(true,merge(map))
-      };
-      ws.onerror=()=>{diagAdd(`${host} 浏览器 WebSocket onerror；当前 readyState=${ws.readyState}`)};
-      ws.onclose=e=>{
-       diagAdd(`${host} onclose：code=${e.code}, reason=${e.reason||"(空)"}, clean=${e.wasClean}, 已握手=${opened}, 已收到消息=${gotMsg}, 耗时=${Date.now()-t0}ms`);
-       if(!done)reject(Error(`WebSocket 关闭：code=${e.code}, reason=${e.reason||"空"}（${host}）`))
-      };
-    });
-    return out
-   }catch(e){lastErr=e;diagAdd(`${host} 失败：${e.message}`)}
- }
- throw lastErr||Error("两个讯飞 WebSocket 地址均连接失败")
-}
-
-async function recognize(){
- if(!file||running)return;save();if(!appid.value.trim()||!key.value.trim()||!secret.value.trim()){tipSet("请先填写 APPID / API Key / API Secret","warn");return}
- running=true;start.disabled=true;retry.disabled=true;copy.disabled=true;download.disabled=true;format.disabled=true;diagnostics=[];diag.textContent="";result.value="";text="";
- try{
-  setStatus("正在转换为 16kHz 单声道 PCM...");setProgress(2);pcm=await pcm16(file);setProgress(7);
-  const parts=split(pcm);setStatus(`已自动分段，共 ${parts.length} 段`);
-  const all=[];
-  for(let i=0;i<parts.length;i++){
-   setStatus(`第 ${i+1}/${parts.length} 段识别中...`);
-   const s=await segment(parts[i],i+1);all.push(s);text=all.join("");result.value=text;setProgress(10+(i+1)/parts.length*85)
-<!doctype html>
-<html lang="zh-CN">
-<head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>音视频转文字</title>
@@ -1047,4 +870,39 @@ async function recognize(){
           dropzone.classList.remove("dragover");
         });
       });
-      dropzone.addEventLis
+      dropzone.addEventListener("drop", function (e) {
+        pickFile(e.dataTransfer.files && e.dataTransfer.files[0]);
+      });
+
+      audioInput.addEventListener("change", function () {
+        pickFile(audioInput.files && audioInput.files[0]);
+      });
+
+      startBtn.addEventListener("click", recognize);
+      retryBtn.addEventListener("click", recognize);
+      copyBtn.addEventListener("click", copyResult);
+      downloadBtn.addEventListener("click", function () {
+        if (!latestResult) return;
+        downloadResultByFormat(latestResult, downloadFormat.value);
+        setTip("文件已下载", "ok");
+      });
+
+      clearBtn.addEventListener("click", function () {
+        finalText.value = "";
+        autoGrow(finalText, true);
+        latestResult = "";
+        setProgress(0);
+        copyBtn.disabled = true;
+        downloadBtn.disabled = true;
+        downloadFormat.disabled = true;
+        setStatus(currentFile ? "音频已就绪，等待识别" : "等待上传音频");
+        setTip("");
+      });
+
+      loadCfg();
+      setProgress(0);
+      autoGrow(finalText, true);
+    })();
+  </script>
+</body>
+</html>
