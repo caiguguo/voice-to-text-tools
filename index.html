@@ -674,26 +674,41 @@
           }
 
           ws.onopen = function () {
-            var frameSize = 5120;
-            var intervalMs = 10;
+            var frameSize = 1280;
+            var intervalMs = 40;
             var offset = 0;
             var first = true;
 
-            timer = setInterval(function () {
-              if (ws.readyState !== 1) {
-                clearInterval(timer);
+            function sendNextFrame() {
+              if (finished || ws.readyState !== 1) {
                 return;
               }
 
               var end = Math.min(offset + frameSize, pcmPart.length);
               var chunk = pcmPart.subarray(offset, end);
+
               var status = 1;
-              if (first) status = 0;
-              if (end >= pcmPart.length) status = 2;
+
+              if (first) {
+                status = 0;
+              }
+
+              if (end >= pcmPart.length) {
+                status = 2;
+              }
 
               var payload = {
                 common: first ? { app_id: appid } : undefined,
-                business: first ? { language: "zh_cn", domain: "iat", accent: "mandarin", dwa: "wpgs" } : undefined,
+
+                business: first ? {
+                  language: "zh_cn",
+                  domain: "iat",
+                  accent: "mandarin",
+                  dwa: "wpgs",
+                  ptt: 1,
+                  pcm: 1
+                } : undefined,
+
                 data: {
                   status: status,
                   format: "audio/L16;rate=16000",
@@ -702,12 +717,26 @@
                 }
               };
 
-              ws.send(JSON.stringify(payload));
+              try {
+                ws.send(JSON.stringify(payload));
+              } catch (e) {
+                doneFail(new Error("音频发送失败：" + e.message));
+                return;
+              }
+
               first = false;
               offset = end;
+
               onUploadProgress(Math.min(1, offset / pcmPart.length));
-              if (status === 2) clearInterval(timer);
-            }, intervalMs);
+
+              if (status === 2) {
+                return;
+              }
+
+              timer = setTimeout(sendNextFrame, intervalMs);
+            }
+
+            sendNextFrame();
           };
 
           ws.onmessage = function (ev) {
